@@ -115,6 +115,8 @@ final class ServerController: @unchecked Sendable {
             try osa.run()
             osa.waitUntilExit()
         } catch {
+            currentPort = 0
+            currentMode = .direct
             DispatchQueue.main.async { self.onExit?(-1) }
             return
         }
@@ -135,7 +137,7 @@ final class ServerController: @unchecked Sendable {
     private static func pidOfServer(port: Int) -> Int32? {
         let pgrep = Process()
         pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        pgrep.arguments = ["-f", "fm serve --port \(port)"]
+        pgrep.arguments = ["-fn", "fm serve --port \(port)"]   // -n = newest match (the one Terminal just launched)
         let pipe = Pipe()
         pgrep.standardOutput = pipe
         pgrep.standardError = FileHandle.nullDevice
