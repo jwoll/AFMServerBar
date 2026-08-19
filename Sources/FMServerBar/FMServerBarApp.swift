@@ -17,9 +17,9 @@ struct FMServerBarApp: App {
     }
 
     /// A solid status-colored disc with a white brain glyph inside it.
-    /// Reads as a clean colored dot at menu-bar size; the brain conveys identity.
+    /// Sized to the full menu-bar thickness so it's as large as possibly fits.
     static func statusIcon(color: Color) -> NSImage {
-        let diameter: CGFloat = 18   // menu-bar-appropriate
+        let diameter: CGFloat = NSStatusBar.system.thickness   // full bar height (~22pt), edge-to-edge
         let img = NSImage(size: NSSize(width: diameter, height: diameter))
         img.lockFocus()
         // 1) filled status-colored circle
