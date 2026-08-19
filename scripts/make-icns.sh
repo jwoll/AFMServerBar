@@ -7,7 +7,9 @@ set -euo pipefail
 # the source of truth; only re-run + commit when the icon DESIGN changes.
 
 cd "$(dirname "$0")/.."
+WORK=$(mktemp -d)
 SWIFT=$(mktemp /tmp/mkicon.XXXX.swift)
+trap 'rm -rf "$WORK" "$SWIFT"' EXIT   # clean up on all exit paths (success or failure)
 cat > "$SWIFT" <<'EOF'
 import AppKit
 // Render the brand icon: green disc + white brain.fill, at one size.
@@ -44,10 +46,9 @@ for (name, px) in sizes {
 }
 print("rendered \(sizes.count) pngs")
 EOF
-ICONSET=$(mktemp -d)/AppIcon.iconset
+ICONSET="$WORK/AppIcon.iconset"
 mkdir -p "$ICONSET"
 swift "$SWIFT" "$ICONSET"
 mkdir -p Resources
 iconutil -c icns "$ICONSET" -o Resources/AppIcon.icns
-rm -f "$SWIFT"
 echo "Wrote Resources/AppIcon.icns"
