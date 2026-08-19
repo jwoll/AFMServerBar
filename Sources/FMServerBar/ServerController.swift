@@ -25,6 +25,16 @@ final class ServerController: @unchecked Sendable {
         queue.sync { process?.isRunning ?? false }
     }
 
+    /// Non-blocking running check: evaluates on the serial queue and delivers
+    /// the result on the main thread. Use this from the main thread instead of
+    /// `isRunning` when the queue may be busy with a long (terminal) launch.
+    func isRunningAsync(_ completion: @escaping @Sendable (Bool) -> Void) {
+        queue.async { [weak self] in
+            let r = self?.process?.isRunning ?? false
+            DispatchQueue.main.async { completion(r) }
+        }
+    }
+
     /// Reaps only a child process THIS app previously spawned and left orphaned
     /// (e.g. due to a crash or force-quit). The candidate PID is read from
     /// UserDefaults ("lastChildPID") and is verified to still be running an
@@ -89,7 +99,11 @@ final class ServerController: @unchecked Sendable {
         proc.arguments = ["serve", "--port", String(port)]
         proc.terminationHandler = { [weak self] p in
             let code = p.terminationStatus
-            DispatchQueue.main.async { self?.process = nil; self?.onExit?(code) }
+            guard let self else { return }
+            self.queue.async {
+                self.process = nil
+                DispatchQueue.main.async { self.onExit?(code) }
+            }
         }
         do {
             try proc.run()
@@ -168,9 +182,11 @@ final class ServerController: @unchecked Sendable {
     }
 
     private func stopSync() {
+        // Clear any installed termination handler first so a late/stale exit
+        // can't fire a spurious onExit after a deliberate stop.
+        process?.terminationHandler = nil
         // Direct mode: we hold a Process handle.
         if let proc = process, proc.isRunning {
-            proc.terminationHandler = nil
             proc.terminate()
             process = nil
         } else if currentMode == .terminal {
@@ -182,6 +198,7 @@ final class ServerController: @unchecked Sendable {
         process = nil
         UserDefaults.standard.removeObject(forKey: "lastChildPID")
         currentPort = 0
+        currentMode = .direct
     }
 
     /// Closes the Terminal window running `fm serve --port <port>`, if any.

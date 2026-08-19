@@ -48,11 +48,8 @@ final class AppState: ObservableObject {
             controller.start(port: port, mode: mode)
         }
         if mode == .direct {
-            // brief hop to reflect the handle-based state after the (fast) direct spawn
-            Task { @MainActor in
-                // small delay so the detached direct start has run
-                try? await Task.sleep(nanoseconds: 100_000_000)
-                self.isProcessRunning = self.controller.isRunning
+            controller.isRunningAsync { [weak self] running in
+                MainActor.assumeIsolated { self?.isProcessRunning = running }
             }
         }
         startPolling()
