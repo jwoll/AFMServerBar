@@ -128,6 +128,8 @@ final class ServerController: @unchecked Sendable {
         if found > 0 {
             UserDefaults.standard.set(Int(found), forKey: "lastChildPID")
         } else {
+            currentPort = 0
+            currentMode = .direct
             DispatchQueue.main.async { self.onExit?(-1) }
         }
     }
