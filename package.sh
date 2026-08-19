@@ -4,12 +4,27 @@ cd "$(dirname "$0")"
 
 # ---- Configuration (edit these for your account) ----
 SIGNING_IDENTITY="${SIGNING_IDENTITY:-Developer ID Application: Verity Systems LLC}"
-TEAM_ID="${TEAM_ID:-}"                       # e.g. 382AE2E2...
-NOTARY_PROFILE="${NOTARY_PROFILE:-FMServerBar}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-FMServerBar}"   # from: xcrun notarytool store-credentials
 VERSION="${VERSION:-0.1.0}"
 APP="FMServerBar.app"
 DMG="FMServerBar-${VERSION}.dmg"
 # ------------------------------------------------------
+
+# Submit to Apple and wait; on rejection, auto-fetch the log so the failure
+# reason is visible instead of just a submission id.
+notarize() {
+    local target="$1" out id
+    out=$(xcrun notarytool submit "$target" --keychain-profile "$NOTARY_PROFILE" --wait 2>&1) || {
+        echo "$out"
+        id=$(printf '%s\n' "$out" | awk '/id:/ {print $2; exit}')
+        if [ -n "${id:-}" ]; then
+            echo "==> notarization failed; fetching log for $id"
+            xcrun notarytool log "$id" --keychain-profile "$NOTARY_PROFILE" || true
+        fi
+        exit 1
+    }
+    echo "$out"
+}
 
 echo "==> [1/10] swift build -c release"
 swift build -c release
@@ -37,8 +52,7 @@ rm -f FMServerBar.zip
 ditto -c -k --keepParent "$APP" FMServerBar.zip
 
 echo "==> [6/10] notarize app (waits for Apple; ~1-5 min)"
-xcrun notarytool submit FMServerBar.zip \
-    --keychain-profile "$NOTARY_PROFILE" --wait
+notarize FMServerBar.zip
 
 echo "==> [7/10] staple app"
 xcrun stapler staple "$APP"
@@ -53,9 +67,10 @@ rm -rf dmgroot
 
 echo "==> [9/10] sign, notarize, staple the dmg"
 codesign --force --sign "$SIGNING_IDENTITY" --timestamp "$DMG"
-xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
+notarize "$DMG"
 xcrun stapler staple "$DMG"
 
 echo "==> [10/10] final gatecheck"
 spctl -a -vvv -t install "$DMG"
+rm -f FMServerBar.zip
 echo "DONE: $DMG"
