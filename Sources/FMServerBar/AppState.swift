@@ -10,6 +10,9 @@ final class AppState: ObservableObject {
     @Published var lastPoll: String?
     @Published var launchFailed = false
     @Published var launchAtLogin = false
+    @Published var useTerminalForPCC: Bool {
+        didSet { UserDefaults.standard.set(useTerminalForPCC, forKey: "useTerminalForPCC") }
+    }
 
     private let controller = ServerController()
     private var pollTask: Task<Void, Never>?
@@ -17,6 +20,8 @@ final class AppState: ObservableObject {
     init() {
         let saved = UserDefaults.standard.integer(forKey: "port")
         self.port = saved == 0 ? 1976 : saved
+        self.launchAtLogin = (SMAppService.mainApp.status == .enabled)
+        self.useTerminalForPCC = UserDefaults.standard.bool(forKey: "useTerminalForPCC")
         controller.onExit = { [weak self] code in
             guard let self else { return }
             MainActor.assumeIsolated {
@@ -25,7 +30,6 @@ final class AppState: ObservableObject {
                 self.health = nil
             }
         }
-        self.launchAtLogin = (SMAppService.mainApp.status == .enabled)
         start()
     }
 
@@ -33,8 +37,24 @@ final class AppState: ObservableObject {
 
     func start() {
         launchFailed = false
-        controller.start(port: port)
-        isProcessRunning = controller.isRunning
+        let port = self.port
+        let mode: ServerController.LaunchMode = useTerminalForPCC ? .terminal : .direct
+        // Terminal-mode launch blocks for several seconds (osascript + pgrep poll),
+        // so run the controller start off the main actor to avoid beachballing.
+        // In terminal mode there's no Process handle, so optimistically mark running
+        // and let /health polling confirm; direct mode confirms via controller.isRunning.
+        isProcessRunning = (mode == .terminal)
+        Task.detached { [controller] in
+            controller.start(port: port, mode: mode)
+        }
+        if mode == .direct {
+            // brief hop to reflect the handle-based state after the (fast) direct spawn
+            Task { @MainActor in
+                // small delay so the detached direct start has run
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                self.isProcessRunning = self.controller.isRunning
+            }
+        }
         startPolling()
     }
 
@@ -47,6 +67,14 @@ final class AppState: ObservableObject {
 
     func applyPort() { stop(); start() }
 
+    /// Switch between direct (on-device background) and Terminal-launched (PCC) mode.
+    /// Stops the current server first, then starts in the new mode.
+    func setUseTerminalForPCC(_ enabled: Bool) {
+        useTerminalForPCC = enabled
+        stop()
+        start()
+    }
+
     private func startPolling() {
         pollTask?.cancel()
         pollTask = Task { [weak self] in
@@ -55,7 +83,7 @@ final class AppState: ObservableObject {
                 let h = await HealthPoller.poll(port: self.port)
                 await MainActor.run {
                     self.health = h
-                    self.isProcessRunning = self.controller.isRunning
+                    self.isProcessRunning = self.useTerminalForPCC ? (self.health != nil) : self.controller.isRunning
                     self.lastPoll = Self.clock()
                 }
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
