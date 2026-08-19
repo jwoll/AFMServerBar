@@ -1,5 +1,11 @@
 #!/bin/bash
 set -euo pipefail
+
+# NOTE: output is not bit-for-bit reproducible (NSBitmapImageRep embeds varying
+# PNG metadata), so re-running may show a ~10-byte git diff on AppIcon.icns even
+# though the icon is visually identical. The committed Resources/AppIcon.icns is
+# the source of truth; only re-run + commit when the icon DESIGN changes.
+
 cd "$(dirname "$0")/.."
 SWIFT=$(mktemp /tmp/mkicon.XXXX.swift)
 cat > "$SWIFT" <<'EOF'
