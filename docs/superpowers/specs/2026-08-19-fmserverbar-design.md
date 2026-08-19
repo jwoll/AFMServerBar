@@ -17,10 +17,26 @@ HTTP server (Apple already ships it).
 `/usr/bin/fm serve` is a supported OpenAI-compatible Chat Completions server
 exposing `GET /health`, `GET /v1/models`, `POST /v1/chat/completions`
 (streaming + non-streaming) for models `system` (on-device) and `pcc`
-(Private Cloud Compute). Verified working, including PCC, when launched from
-an Aqua GUI session (Terminal.app). A menu-bar app launched by the user runs
-in that same Aqua session, so its subprocess should inherit the context PCC
-needs.
+(Private Cloud Compute). A menu-bar app launches/stops it as a subprocess.
+
+### Empirical findings (verified 2026-08-19, from the built app)
+
+- **On-device (`system`) works from the GUI-launched app.** Auto-start fires at
+  launch (from `AppState.init()`), `/health` and `/v1/chat/completions` respond.
+- **PCC (`pcc`) does NOT work from the GUI-launched app.** It returns
+  `503 "Private Cloud Compute is not available in this context. Please use the
+  Terminal app."` — the same restriction seen from a sandboxed shell. The earlier
+  assumption that an Aqua/GUI session would inherit PCC eligibility was WRONG:
+  PCC requires launching `fm serve` from **Terminal.app** specifically. The app
+  handles this honestly — the menu shows `pcc: ✗ <reason>`. For PCC, run
+  `fm serve` manually in Terminal.
+- **Orphan handling:** a clean **Quit** (button → `shutdown()` → `stop()`)
+  terminates the child. A crash / SIGKILL / SIGTERM does NOT (SwiftUI runs no
+  reliable cleanup on signals), so the child orphans. This is made self-healing
+  by `ServerController.reapStrayServers(port:)` which `pkill -f "fm serve
+  --port <port>"` at the start of every `start()` — verified to reap a prior
+  orphan and bring up a single fresh server. The port is never permanently
+  blocked.
 
 ## Confirmed facts (verified 2026-08-19)
 
