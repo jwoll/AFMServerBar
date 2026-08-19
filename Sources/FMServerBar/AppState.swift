@@ -26,6 +26,7 @@ final class AppState: ObservableObject {
             }
         }
         self.launchAtLogin = (SMAppService.mainApp.status == .enabled)
+        start()
     }
 
     var baseURL: String { "http://127.0.0.1:\(port)/v1" }

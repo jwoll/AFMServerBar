@@ -19,7 +19,9 @@ struct FMServerBarApp: App {
         let symbol = names.compactMap {
             NSImage(systemSymbolName: $0, accessibilityDescription: "FM Server")
         }.first ?? NSImage()
-        let config = NSImage.SymbolConfiguration(paletteColors: [NSColor(color)])
+        let sizeConfig = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+        let colorConfig = NSImage.SymbolConfiguration(paletteColors: [NSColor(color)])
+        let config = sizeConfig.applying(colorConfig)
         let img = symbol.withSymbolConfiguration(config) ?? symbol
         img.isTemplate = false
         return img
@@ -67,7 +69,6 @@ struct MenuContent: View {
         }
         .padding(12)
         .frame(width: 320)
-        .onAppear { if !state.isProcessRunning { state.start() } }
     }
 
     private var headline: String {
