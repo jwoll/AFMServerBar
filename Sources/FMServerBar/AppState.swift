@@ -30,6 +30,15 @@ final class AppState: ObservableObject {
                 self.health = nil
             }
         }
+        // Stop the server on EVERY termination path (menu Quit, ⌘Q, osascript
+        // quit, logout) — self-contained, doesn't depend on the Quit button's
+        // closure (which AppKit bypasses) or delegate-wiring timing.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.shutdown() }
+        }
         start()
     }
 
