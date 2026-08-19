@@ -7,6 +7,18 @@ Apple's built-in `fm serve` (`/usr/bin/fm`).
 It is a thin wrapper: `fm serve` is the actual server. FMServerBar launches it
 as a subprocess, polls `/health`, and shows status in the menu bar.
 
+## Install
+
+Download `FMServerBar-<version>.dmg` from the releases, open it, and drag
+**FM Server** to Applications. The app is signed with a Developer ID and
+notarized by Apple, so it opens without security warnings.
+
+The first time you enable PCC, macOS will ask permission for FM Server to
+control Terminal — click OK (this is required for Private Cloud Compute).
+
+For building from source, see below. For cutting a release, see
+`docs/superpowers/RELEASING.md`.
+
 ## Build & run
 
 ```
