@@ -60,6 +60,16 @@ struct MenuContent: View {
                 Text("Last checked: \(last)").font(.caption2).foregroundStyle(.secondary)
             }
             Divider()
+            Toggle("Enable PCC (via Terminal)", isOn: Binding(
+                get: { state.useTerminalForPCC },
+                set: { state.setUseTerminalForPCC($0) }
+            ))
+            .font(.caption)
+            if state.useTerminalForPCC {
+                Text("Runs fm serve in a minimized Terminal window — keep it open for PCC.")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            Divider()
             Toggle("Launch at Login", isOn: Binding(
                 get: { state.launchAtLogin },
                 set: { state.setLaunchAtLogin($0) }
