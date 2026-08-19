@@ -118,5 +118,10 @@ final class AppState: ObservableObject {
         return (health?.systemAvailable ?? false) ? .green : .yellow
     }
 
-    func shutdown() { stop() }
+    /// Called on app quit: stop the server SYNCHRONOUSLY so the terminal-mode
+    /// child and its window are cleaned up before NSApplication terminates.
+    func shutdown() {
+        pollTask?.cancel(); pollTask = nil
+        controller.stopBlocking()
+    }
 }

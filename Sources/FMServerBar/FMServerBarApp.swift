@@ -1,15 +1,28 @@
 import SwiftUI
 import AppKit
 
+/// Owns the shared AppState and guarantees the server is stopped on EVERY
+/// termination path (menu Quit, ⌘Q, `osascript quit`, logout) — not just the
+/// in-menu Quit button, whose closure AppKit bypasses on most quit routes.
+/// Owning AppState here (rather than as a scene @StateObject) means cleanup does
+/// not depend on the menu ever having been opened.
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    let state = AppState()
+    func applicationWillTerminate(_ notification: Notification) {
+        state.shutdown()   // synchronous: stops server + closes Terminal window
+    }
+}
+
 @main
 struct FMServerBarApp: App {
-    @StateObject private var state = AppState()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
         MenuBarExtra {
-            MenuContent(state: state)
+            MenuContent(state: delegate.state)
         } label: {
-            Image(nsImage: Self.statusIcon(color: state.statusColor))
+            Image(nsImage: Self.statusIcon(color: delegate.state.statusColor))
         }
         .menuBarExtraStyle(.window)
     }

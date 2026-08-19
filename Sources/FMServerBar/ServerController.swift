@@ -181,6 +181,13 @@ final class ServerController: @unchecked Sendable {
         queue.async { [weak self] in self?.stopSync() }
     }
 
+    /// Synchronous stop for the app-quit path: blocks until the server is
+    /// actually killed and (in terminal mode) its window closed, so cleanup
+    /// isn't lost to `NSApplication.terminate` firing first.
+    func stopBlocking() {
+        queue.sync { stopSync() }
+    }
+
     private func stopSync() {
         // Clear any installed termination handler first so a late/stale exit
         // can't fire a spurious onExit after a deliberate stop.
@@ -188,7 +195,6 @@ final class ServerController: @unchecked Sendable {
         // Direct mode: we hold a Process handle.
         if let proc = process, proc.isRunning {
             proc.terminate()
-            process = nil
         } else if currentMode == .terminal {
             // Terminal mode: kill the tracked PID and close its Terminal window.
             let pid = UserDefaults.standard.integer(forKey: "lastChildPID")
