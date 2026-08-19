@@ -23,20 +23,43 @@ exposing `GET /health`, `GET /v1/models`, `POST /v1/chat/completions`
 
 - **On-device (`system`) works from the GUI-launched app.** Auto-start fires at
   launch (from `AppState.init()`), `/health` and `/v1/chat/completions` respond.
-- **PCC (`pcc`) does NOT work from the GUI-launched app.** It returns
+- **PCC (`pcc`) is gated on responsible-process attribution — it requires
+  Terminal.app.** `fm` checks the responsible process (a `TerminalAppearanceProbe`
+  class in the binary confirms this); it is NOT a TTY check, NOT a flag/env, NOT
+  an entitlement `fm` itself carries. A GUI app's direct subprocess gets
   `503 "Private Cloud Compute is not available in this context. Please use the
-  Terminal app."` — the same restriction seen from a sandboxed shell. The earlier
-  assumption that an Aqua/GUI session would inherit PCC eligibility was WRONG:
-  PCC requires launching `fm serve` from **Terminal.app** specifically. The app
-  handles this honestly — the menu shows `pcc: ✗ <reason>`. For PCC, run
-  `fm serve` manually in Terminal.
+  Terminal app."` But launching `fm serve` THROUGH Terminal.app (via
+  `osascript ... tell application "Terminal" to do script`) makes Terminal the
+  responsible process and PCC works (verified: `pcc: available` + real streamed
+  completion). See the PCC-mode feature below.
 - **Orphan handling:** a clean **Quit** (button → `shutdown()` → `stop()`)
   terminates the child. A crash / SIGKILL / SIGTERM does NOT (SwiftUI runs no
   reliable cleanup on signals), so the child orphans. This is made self-healing
-  by `ServerController.reapStrayServers(port:)` which `pkill -f "fm serve
-  --port <port>"` at the start of every `start()` — verified to reap a prior
-  orphan and bring up a single fresh server. The port is never permanently
-  blocked.
+  by reaping the app's OWN previously-spawned child by tracked PID (persisted to
+  UserDefaults `lastChildPID`, verified still an `fm serve` via `ps` before
+  killing) at the start of every `start()` — so a user's own `fm serve` is never
+  touched.
+
+### PCC mode (Model-context toggle)
+
+A menu toggle **Model context** switches how `fm serve` is launched:
+- **On-device (background)** — DEFAULT. `ServerController` spawns `fm serve`
+  directly via `Process` (no window). `system` works; `pcc` shows unavailable.
+- **Enable PCC (Terminal)** — launches `fm serve` via
+  `osascript`→Terminal.app `do script`, making Terminal the responsible process
+  so BOTH `system` and `pcc` work. The app then **minimizes just that Terminal
+  window** (`set miniaturized of <window> to true` — verified to preserve PCC and
+  leave the user's other Terminal windows untouched). A brief (~1s) flash occurs
+  before minimize; the window genuinely exists (minimized), because Terminal must
+  stay the responsible process — truly headless is impossible.
+
+Toggling: stop the current server first (kill by tracked PID; in Terminal mode
+also close its `fm serve` Terminal window), then start in the new mode. The
+child PID is tracked in the SAME `lastChildPID` slot regardless of mode, so
+stop/reap logic is uniform. Health polling and `statusColor` are unchanged —
+`/health` reports real per-mode `pcc` availability. Mode is persisted; default
+on-device. Menu shows a caption in PCC mode: "Runs fm serve in a minimized
+Terminal window — keep it open."
 
 ## Confirmed facts (verified 2026-08-19)
 
