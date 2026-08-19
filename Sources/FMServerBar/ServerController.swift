@@ -6,6 +6,13 @@ final class ServerController: @unchecked Sendable {
     private var process: Process?
     private let fmPath = "/usr/bin/fm"
 
+    enum LaunchMode: String { case direct, terminal }
+
+    /// The port the currently-running server was started on (for terminal-mode PID
+    /// discovery and window cleanup). 0 when nothing is running.
+    private var currentPort: Int = 0
+    private var currentMode: LaunchMode = .direct
+
     /// Called on the main thread when the process exits (expected or not).
     var onExit: ((Int32) -> Void)?
 
@@ -54,9 +61,18 @@ final class ServerController: @unchecked Sendable {
         UserDefaults.standard.removeObject(forKey: "lastChildPID")
     }
 
-    func start(port: Int) {
-        reapOwnOrphan()  // kill only our own orphan from a prior app lifetime
-        stop()           // guard against orphaning a previous instance
+    func start(port: Int, mode: LaunchMode = .direct) {
+        reapOwnOrphan()   // kill only our own orphan from a prior app lifetime
+        stop()            // guard against orphaning a previous instance
+        currentPort = port
+        currentMode = mode
+        switch mode {
+        case .direct:   startDirect(port: port)
+        case .terminal: startTerminal(port: port)
+        }
+    }
+
+    private func startDirect(port: Int) {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: fmPath)
         proc.arguments = ["serve", "--port", String(port)]
@@ -76,13 +92,94 @@ final class ServerController: @unchecked Sendable {
         }
     }
 
+    /// Launches `fm serve` INSIDE Terminal.app so Terminal is the responsible
+    /// process (required for Private Cloud Compute). Minimizes just that window,
+    /// then discovers the child PID and stores it in `lastChildPID` so stop()/
+    /// reapOwnOrphan() work identically to the direct path.
+    private func startTerminal(port: Int) {
+        let script = """
+        tell application "Terminal"
+            set w to do script "exec fm serve --port \(port)"
+            delay 1
+            try
+                set miniaturized of (first window whose tabs contains w) to true
+            end try
+        end tell
+        """
+        let osa = Process()
+        osa.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        osa.arguments = ["-e", script]
+        osa.standardError = FileHandle.nullDevice
+        osa.standardOutput = FileHandle.nullDevice
+        do {
+            try osa.run()
+            osa.waitUntilExit()
+        } catch {
+            DispatchQueue.main.async { self.onExit?(-1) }
+            return
+        }
+        var found: Int32 = 0
+        for _ in 0..<20 {   // up to ~4s
+            if let pid = Self.pidOfServer(port: port) { found = pid; break }
+            usleep(200_000)
+        }
+        if found > 0 {
+            UserDefaults.standard.set(Int(found), forKey: "lastChildPID")
+        } else {
+            DispatchQueue.main.async { self.onExit?(-1) }
+        }
+    }
+
+    /// Finds the PID of an `fm serve --port <port>` process via pgrep. Returns the
+    /// first match, or nil if none.
+    private static func pidOfServer(port: Int) -> Int32? {
+        let pgrep = Process()
+        pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        pgrep.arguments = ["-f", "fm serve --port \(port)"]
+        let pipe = Pipe()
+        pgrep.standardOutput = pipe
+        pgrep.standardError = FileHandle.nullDevice
+        do { try pgrep.run(); pgrep.waitUntilExit() } catch { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let out = String(data: data, encoding: .utf8) ?? ""
+        for line in out.split(separator: "\n") {
+            if let pid = Int32(line.trimmingCharacters(in: .whitespaces)) { return pid }
+        }
+        return nil
+    }
+
     func stop() {
-        guard let proc = process, proc.isRunning else { process = nil; return }
-        proc.terminationHandler = nil
-        proc.terminate()
+        // Direct mode: we hold a Process handle.
+        if let proc = process, proc.isRunning {
+            proc.terminationHandler = nil
+            proc.terminate()
+            process = nil
+        } else if currentMode == .terminal {
+            // Terminal mode: kill the tracked PID and close its Terminal window.
+            let pid = UserDefaults.standard.integer(forKey: "lastChildPID")
+            if pid > 0 { kill(pid_t(pid), SIGTERM) }
+            closeTerminalWindow(port: currentPort)
+        }
         process = nil
-        // A cleanly stopped child is not an orphan — clear the stored PID so
-        // reapOwnOrphan() on the next start() has nothing to act on.
         UserDefaults.standard.removeObject(forKey: "lastChildPID")
+        currentPort = 0
+    }
+
+    /// Closes the Terminal window running `fm serve --port <port>`, if any.
+    private func closeTerminalWindow(port: Int) {
+        let script = """
+        tell application "Terminal"
+            try
+                close (every window whose name contains "fm serve --port \(port)")
+            end try
+        end tell
+        """
+        let osa = Process()
+        osa.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        osa.arguments = ["-e", script]
+        osa.standardError = FileHandle.nullDevice
+        osa.standardOutput = FileHandle.nullDevice
+        try? osa.run()
+        osa.waitUntilExit()
     }
 }
