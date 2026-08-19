@@ -63,10 +63,10 @@ final class AppState: ObservableObject {
     }
 
     /// HH:mm:ss label for "last checked".
-    private static func clock() -> String {
-        let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
-        return f.string(from: Date())
-    }
+    private static let clockFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm:ss"; return f
+    }()
+    private static func clock() -> String { clockFormatter.string(from: Date()) }
 
     func copyBaseURL() {
         NSPasteboard.general.clearContents()
