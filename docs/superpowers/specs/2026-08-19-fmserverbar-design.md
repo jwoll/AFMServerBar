@@ -38,6 +38,12 @@ needs.
 - **Default port:** **1976** (fm's default; editable in menu).
 - **On quit:** terminate the `fm serve` subprocess (no orphan).
 - **Startup:** auto-start subprocess on app launch.
+- **Launch at Login:** menu checkbox via `SMAppService.mainApp` (macOS 13+),
+  **off by default** (explicit opt-in). Registers the `.app` itself as a login
+  item — appears in System Settings > General > Login Items. Because the app
+  launches in the user's Aqua GUI session, its `fm serve` subprocess keeps the
+  context PCC needs (unlike a headless LaunchAgent). Only effective from the
+  packaged/signed `.app`, not `swift run`.
 - **Packaging:** SwiftPM executable → `LSUIElement` agent `.app`, ad-hoc signed
   (same approach as the earlier design).
 - **Icon:** status-tinted SF Symbol (green/yellow/red), non-template `NSImage`.
@@ -96,6 +102,7 @@ Port:      [ 1976 ]  (Apply restarts server)
 [ Stop Server ]  (toggles)
 Last checked: 10:42:07
 ─────────────────────────
+Launch at Login   ☐        (off by default; SMAppService)
 Quit   (stops fm serve)
 ```
 
@@ -130,6 +137,5 @@ Quit   (stops fm serve)
 ## Out of scope (YAGNI)
 
 - Reimplementing the HTTP server (fm serve does it).
-- Launch-at-login (can add `SMAppService` later if wanted).
 - Multiple simultaneous servers / socket mode.
 - Editing model set (fixed by fm: system + pcc).

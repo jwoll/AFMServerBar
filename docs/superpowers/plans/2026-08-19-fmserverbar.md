@@ -228,6 +228,7 @@ cd ~/FMServerBar && git add -A && git commit -m "feat: ServerController managing
 ```swift
 import Foundation
 import SwiftUI
+import ServiceManagement
 
 @MainActor
 final class AppState: ObservableObject {
@@ -236,6 +237,7 @@ final class AppState: ObservableObject {
     @Published var health: Health?
     @Published var lastPoll: String?
     @Published var launchFailed = false
+    @Published var launchAtLogin = false
 
     private let controller = ServerController()
     private var pollTask: Task<Void, Never>?
@@ -249,6 +251,7 @@ final class AppState: ObservableObject {
             self.launchFailed = (code != 0)
             self.health = nil
         }
+        self.launchAtLogin = (SMAppService.mainApp.status == .enabled)
     }
 
     var baseURL: String { "http://127.0.0.1:\(port)/v1" }
@@ -294,6 +297,20 @@ final class AppState: ObservableObject {
     func copyBaseURL() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(baseURL, forType: .string)
+    }
+
+    /// Register/unregister the .app as a login item. Only effective from the
+    /// packaged, signed .app — not `swift run`. Reflects real state back to UI.
+    func setLaunchAtLogin(_ enabled: Bool) {
+        do {
+            if enabled { try SMAppService.mainApp.register() }
+            else { try SMAppService.mainApp.unregister() }
+        } catch {
+            // Registration can fail (e.g. run from swift run, or Gatekeeper).
+            // Surface as launchFailed-style feedback via lastPoll text.
+            lastPoll = "Login item error: \(error.localizedDescription)"
+        }
+        launchAtLogin = (SMAppService.mainApp.status == .enabled)
     }
 
     /// green = running + system available; yellow = running but not (yet) available; red = stopped/failed.
@@ -388,6 +405,11 @@ struct MenuContent: View {
                 Text("Last checked: \(last)").font(.caption2).foregroundStyle(.secondary)
             }
             Divider()
+            Toggle("Launch at Login", isOn: Binding(
+                get: { state.launchAtLogin },
+                set: { state.setLaunchAtLogin($0) }
+            ))
+            .font(.caption)
             Button("Quit") { state.shutdown(); NSApplication.shared.terminate(nil) }
         }
         .padding(12)
@@ -489,12 +511,21 @@ Expected: a completion (not a `model_unavailable` error). If PCC is unavailable 
 Manually quit via the menu's Quit, then run: `pgrep -f "fm serve" || echo "no orphan"`
 Expected: `no orphan`.
 
-- [ ] **Step 8: Verify FluidVoice**
+- [ ] **Step 8: Verify Launch at Login toggle**
+
+Relaunch `open ~/FMServerBar/FMServerBar.app`, click the menu's **Launch at Login** checkbox on, then run:
+```bash
+sfltool dumpbtm 2>/dev/null | grep -i fmserverbar || echo "check System Settings > General > Login Items for 'FM Server'"
+```
+Expected: the app appears as a registered login item (checkbox stays checked; no "Login item error" in the menu). Toggle it back off to confirm unregister works.
+Note: this only works from the packaged `.app`; `swift run` will show a registration error, which is expected.
+
+- [ ] **Step 9: Verify FluidVoice**
 
 FluidVoice Custom Provider: Base URL `http://127.0.0.1:1976/v1`, any API key, Refresh models → `system` + `pcc` selectable; run a completion.
 Expected: works; "Connection not tested" clears.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 cd ~/FMServerBar && git add -A && git commit -m "build: app bundle + verified end-to-end with FluidVoice"
@@ -508,4 +539,5 @@ cd ~/FMServerBar && git add -A && git commit -m "build: app bundle + verified en
 - **No orphans:** `ServerController.start` calls `stop()` first, and Quit calls `shutdown()`. If a crash ever leaves one, `pkill -f "fm serve"` clears it.
 - **Polling cadence:** 3s is responsive without being chatty. A failed poll while the process is alive shows yellow (starting/unavailable), not red.
 - **Date usage:** unlike workflow scripts, a normal app may use `Date()`/`DateFormatter` freely — used only for the "Last checked" label.
+- **Launch at Login:** `SMAppService.mainApp` registers the `.app` bundle itself. It only works from the packaged, signed `.app` (Task 6), not `swift run` — a registration error there is expected. Off by default; state is read back from `SMAppService.mainApp.status` so the checkbox reflects reality. Because login-launch keeps the Aqua GUI session, PCC continues to work.
 - **If `.macOS("26.0")` errors:** match the exact platform string SwordSlice's `Package.swift` uses.
