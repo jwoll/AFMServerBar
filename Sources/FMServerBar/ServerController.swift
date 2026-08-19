@@ -13,10 +13,17 @@ final class ServerController: @unchecked Sendable {
     private var currentPort: Int = 0
     private var currentMode: LaunchMode = .direct
 
+    /// Serializes all start/stop/reap operations so a background (terminal-mode)
+    /// launch can never race a main-thread stop() on the shared mutable state
+    /// (process, currentPort, currentMode, lastChildPID).
+    private let queue = DispatchQueue(label: "FMServerBar.ServerController")
+
     /// Called on the main thread when the process exits (expected or not).
     var onExit: ((Int32) -> Void)?
 
-    var isRunning: Bool { process?.isRunning ?? false }
+    var isRunning: Bool {
+        queue.sync { process?.isRunning ?? false }
+    }
 
     /// Reaps only a child process THIS app previously spawned and left orphaned
     /// (e.g. due to a crash or force-quit). The candidate PID is read from
@@ -62,8 +69,12 @@ final class ServerController: @unchecked Sendable {
     }
 
     func start(port: Int, mode: LaunchMode = .direct) {
+        queue.async { [weak self] in self?.performStart(port: port, mode: mode) }
+    }
+
+    private func performStart(port: Int, mode: LaunchMode = .direct) {
         reapOwnOrphan()   // kill only our own orphan from a prior app lifetime
-        stop()            // guard against orphaning a previous instance
+        stopSync()        // guard against orphaning a previous instance
         currentPort = port
         currentMode = mode
         switch mode {
@@ -153,6 +164,10 @@ final class ServerController: @unchecked Sendable {
     }
 
     func stop() {
+        queue.async { [weak self] in self?.stopSync() }
+    }
+
+    private func stopSync() {
         // Direct mode: we hold a Process handle.
         if let proc = process, proc.isRunning {
             proc.terminationHandler = nil
