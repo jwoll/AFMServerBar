@@ -16,15 +16,28 @@ struct FMServerBarApp: App {
         .menuBarExtraStyle(.window)
     }
 
+    /// A solid status-colored disc with a white brain glyph inside it.
+    /// Reads as a clean colored dot at menu-bar size; the brain conveys identity.
     static func statusIcon(color: Color) -> NSImage {
-        let names = ["brain", "apple.intelligence", "sparkles"]
-        let symbol = names.compactMap {
-            NSImage(systemSymbolName: $0, accessibilityDescription: "FM Server")
-        }.first ?? NSImage()
-        let sizeConfig = NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
-        let colorConfig = NSImage.SymbolConfiguration(paletteColors: [NSColor(color)])
-        let config = sizeConfig.applying(colorConfig)
-        let img = symbol.withSymbolConfiguration(config) ?? symbol
+        let diameter: CGFloat = 18   // menu-bar-appropriate
+        let img = NSImage(size: NSSize(width: diameter, height: diameter))
+        img.lockFocus()
+        // 1) filled status-colored circle
+        NSColor(color).setFill()
+        NSBezierPath(ovalIn: NSRect(x: 0, y: 0, width: diameter, height: diameter)).fill()
+        // 2) white brain, ~72% of the diameter, centered
+        let brainPt = diameter * 0.72
+        let cfg = NSImage.SymbolConfiguration(pointSize: brainPt, weight: .semibold)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [.white]))
+        if let base = NSImage(systemSymbolName: "brain.fill", accessibilityDescription: "FM Server"),
+           let brain = base.withSymbolConfiguration(cfg) {
+            brain.isTemplate = false
+            let bs = brain.size
+            let scale = min(brainPt / bs.width, brainPt / bs.height)
+            let w = bs.width * scale, h = bs.height * scale
+            brain.draw(in: NSRect(x: (diameter - w) / 2, y: (diameter - h) / 2, width: w, height: h))
+        }
+        img.unlockFocus()
         img.isTemplate = false
         return img
     }
