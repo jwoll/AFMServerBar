@@ -2,12 +2,13 @@
 
 A macOS menu-bar app that gives you a one-click local AI endpoint using Apple's built-in Foundation Models — no API key, no cloud, no setup.
 
+> **Requires macOS 27.** Apple Foundation Models ship with macOS 27 and are not available on earlier releases.
+
 It wraps Apple's `fm serve` CLI, auto-starts it at launch, and exposes an OpenAI-compatible endpoint at `http://127.0.0.1:1976/v1`. Plug it into any tool that accepts a custom OpenAI base URL: Cursor, Continue, FluidVoice, the OpenAI SDK, or anything else.
 
 ## Requirements
 
-- macOS 26 (Tahoe) or later
-- Apple Foundation Models (`/usr/bin/fm`) — ships with macOS 26
+> **Requires macOS 27 or later.** Apple Foundation Models (`/usr/bin/fm`) ships with macOS 27 and is not available on earlier releases.
 
 ## Install
 
