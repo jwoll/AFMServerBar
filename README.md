@@ -28,6 +28,8 @@ yellow = running but a model not ready, red = stopped/failed.
 ## Features
 
 - **Auto-start** on launch (from `AppState.init()`), Start/Stop toggle.
+- **On-device ↔ PCC toggle** ("Enable PCC (via Terminal)"): switches between the
+  on-device `system` model and Private Cloud Compute. See below.
 - **Editable port** (default 1976), Apply restarts the server.
 - **Copy base URL** button.
 - **Per-model status** polled from `/health` every 3s.
@@ -35,23 +37,30 @@ yellow = running but a model not ready, red = stopped/failed.
   from the packaged `.app`).
 - **Self-healing port:** if the app crashes/force-quits, its orphaned child is
   reaped on next launch — tracked by PID, so a `fm serve` you started yourself
-  (e.g. in Terminal) is never touched.
+  is never touched.
+- **Clean shutdown on every quit path** (Cmd-Q, menu Quit, `osascript quit`,
+  logout) via `NSApplication.willTerminateNotification` — stops the server and,
+  in PCC mode, closes its Terminal window.
 
-## Known limitation: PCC needs Terminal
+## On-device vs PCC (the "Enable PCC" toggle)
 
-Verified empirically: the on-device `system` model works from the app. But
-`pcc` (Private Cloud Compute) returns *"Private Cloud Compute is not available
-in this context. Please use the Terminal app."* when `fm serve` is launched by
-a GUI app. The menu shows this honestly (`pcc: ✗ …`).
+`fm` gates Private Cloud Compute on **responsible-process attribution**: only a
+process whose responsible app is **Terminal.app** may use `pcc`. A GUI app's
+direct subprocess cannot (it returns *"Private Cloud Compute is not available in
+this context"*).
 
-If you need PCC, run `fm serve` yourself in **Terminal.app** (on a different
-port, or stop the app first):
+The app handles both:
 
-```
-fm serve --port 1976
-```
+- **On-device (default):** spawns `fm serve` directly as a background subprocess.
+  `system` works; `pcc` shows unavailable. No window.
+- **Enable PCC (via Terminal):** launches `fm serve` *inside Terminal.app* (via
+  AppleScript) so Terminal is the responsible process — **both `system` and
+  `pcc` work** — then minimizes just that window (other Terminal windows are
+  untouched). Switching back stops that server and closes its window.
 
-Then point your client at that instead.
+Toggling stops the current server before starting the new mode. A brief (~1s)
+Terminal flash occurs when enabling PCC; the window then minimizes to the Dock.
+It cannot be fully headless — Terminal must stay the responsible process.
 
 ## Architecture
 
