@@ -13,9 +13,18 @@ trap 'rm -rf "$WORK" "$SWIFT"' EXIT   # clean up on all exit paths (success or f
 cat > "$SWIFT" <<'EOF'
 import AppKit
 // Render the brand icon: green disc + white brain.fill, at one size.
+// Draw into an explicitly pixel-sized NSBitmapImageRep so the output is exactly
+// `px` pixels (relying on NSImage.lockFocus picks up the screen's 2x backing
+// store and doubles every icon — a real bug for a .icns).
 func render(_ px: CGFloat, to url: URL) {
-    let img = NSImage(size: NSSize(width: px, height: px))
-    img.lockFocus()
+    let n = Int(px)
+    guard let rep = NSBitmapImageRep(
+        bitmapDataPlanes: nil, pixelsWide: n, pixelsHigh: n,
+        bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+        colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return }
+    rep.size = NSSize(width: px, height: px)   // 1 point == 1 pixel
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
     NSColor.systemGreen.setFill()
     NSBezierPath(ovalIn: NSRect(x: 0, y: 0, width: px, height: px)).fill()
     let brainPt = px * 0.72
@@ -28,9 +37,7 @@ func render(_ px: CGFloat, to url: URL) {
         let w = bs.width*s, h = bs.height*s
         brain.draw(in: NSRect(x: (px-w)/2, y: (px-h)/2, width: w, height: h))
     }
-    img.unlockFocus()
-    let rep = NSBitmapImageRep(data: img.tiffRepresentation!)!
-    rep.size = NSSize(width: px, height: px)
+    NSGraphicsContext.restoreGraphicsState()
     try! rep.representation(using: .png, properties: [:])!.write(to: url)
 }
 let dir = URL(fileURLWithPath: CommandLine.arguments[1])
