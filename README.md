@@ -1,84 +1,63 @@
-# FMServerBar
+# FM Server Bar
 
-A macOS menu-bar app that turns Apple's Foundation Models into a local
-OpenAI-compatible endpoint with one click, by launching and supervising
-Apple's built-in `fm serve` (`/usr/bin/fm`).
+A macOS menu-bar app that gives you a one-click local AI endpoint using Apple's built-in Foundation Models — no API key, no cloud, no setup.
 
-It is a thin wrapper: `fm serve` is the actual server. FMServerBar launches it
-as a subprocess, polls `/health`, and shows status in the menu bar.
+It wraps Apple's `fm serve` CLI, auto-starts it at launch, and exposes an OpenAI-compatible endpoint at `http://127.0.0.1:1976/v1`. Plug it into any tool that accepts a custom OpenAI base URL: Cursor, Continue, FluidVoice, the OpenAI SDK, or anything else.
+
+## Requirements
+
+- macOS 26 (Tahoe) or later
+- Apple Foundation Models (`/usr/bin/fm`) — ships with macOS 26
 
 ## Install
 
-Download `FMServerBar-<version>.dmg` from the releases, open it, and drag
-**FM Server** to Applications. The app is signed with a Developer ID and
-notarized by Apple, so it opens without security warnings.
+1. Download `FMServerBar-<version>.dmg` from [Releases](https://github.com/jwoll/AFMServerBar/releases)
+2. Open the dmg and drag **FM Server** to Applications
+3. Launch it — the server starts automatically and a status icon appears in your menu bar
 
-The first time you enable PCC, macOS will ask permission for FM Server to
-control Terminal — click OK (this is required for Private Cloud Compute).
+Signed with a Developer ID and notarized by Apple, so it opens without any security warning.
 
-For building from source, see below. For cutting a release, see
-`docs/superpowers/RELEASING.md`.
+## Use with any OpenAI client
 
-## Build & run
-
-```
-cd ~/FMServerBar
-./build-app.sh          # builds + ad-hoc signs FMServerBar.app
-open FMServerBar.app     # menu-bar icon appears; server auto-starts on port 1976
-```
-
-The app is an agent app (`LSUIElement`) — no Dock icon. A status-tinted brain
-symbol shows in the menu bar: green = running + on-device model available,
-yellow = running but a model not ready, red = stopped/failed.
-
-## Use with FluidVoice (or any OpenAI client)
-
-- Base URL: `http://127.0.0.1:1976/v1`
-- API key: any value (ignored; localhost only)
-- Refresh models → pick `system` (on-device) or `pcc` (Private Cloud Compute)
+| Setting | Value |
+|---|---|
+| Base URL | `http://127.0.0.1:1976/v1` |
+| API key | any value (ignored) |
+| Models | `system` (on-device) · `pcc` (Private Cloud Compute) |
 
 ## Features
 
-- **Auto-start** on launch (from `AppState.init()`), Start/Stop toggle.
-- **On-device ↔ PCC toggle** ("Enable PCC (via Terminal)"): switches between the
-  on-device `system` model and Private Cloud Compute. See below.
-- **Editable port** (default 1976), Apply restarts the server.
-- **Copy base URL** button.
-- **Per-model status** polled from `/health` every 3s.
-- **Launch at Login** toggle (`SMAppService`, off by default; only effective
-  from the packaged `.app`).
-- **Self-healing port:** if the app crashes/force-quits, its orphaned child is
-  reaped on next launch — tracked by PID, so a `fm serve` you started yourself
-  is never touched.
-- **Clean shutdown on every quit path** (Cmd-Q, menu Quit, `osascript quit`,
-  logout) via `NSApplication.willTerminateNotification` — stops the server and,
-  in PCC mode, closes its Terminal window.
+- **Always-on endpoint** — auto-starts `fm serve` on launch; Start/Stop toggle in the menu
+- **On-device or PCC** — toggle between the local `system` model and Apple's privacy-preserving Private Cloud Compute; see [how PCC works](#on-device-vs-pcc) below
+- **Live status** — menu-bar icon turns green (healthy), yellow (degraded), or red (stopped); per-model health shown in the menu
+- **Editable port** — default 1976, change and Apply restarts the server
+- **Copy base URL** — one click to copy the endpoint for pasting into a client
+- **Launch at Login** — optional, off by default
+- **Self-healing** — if the app crashes, it reaps its own orphaned `fm serve` process on next launch without touching any `fm serve` you started yourself
+- **Clean shutdown** — stops the server on every quit path (Cmd-Q, menu Quit, logout)
 
-## On-device vs PCC (the "Enable PCC" toggle)
+## On-device vs PCC
 
-`fm` gates Private Cloud Compute on **responsible-process attribution**: only a
-process whose responsible app is **Terminal.app** may use `pcc`. A GUI app's
-direct subprocess cannot (it returns *"Private Cloud Compute is not available in
-this context"*).
+Apple gates Private Cloud Compute on the responsible process being Terminal.app. A GUI app's subprocess cannot use PCC directly.
 
-The app handles both:
+When you enable the **"Enable PCC (via Terminal)"** toggle, FM Server Bar launches `fm serve` inside Terminal.app via AppleScript, then minimizes that window. Terminal becomes the responsible process and both `system` and `pcc` work. Switching back stops that server and closes the window.
 
-- **On-device (default):** spawns `fm serve` directly as a background subprocess.
-  `system` works; `pcc` shows unavailable. No window.
-- **Enable PCC (via Terminal):** launches `fm serve` *inside Terminal.app* (via
-  AppleScript) so Terminal is the responsible process — **both `system` and
-  `pcc` work** — then minimizes just that window (other Terminal windows are
-  untouched). Switching back stops that server and closes its window.
+The first time you enable PCC, macOS will ask permission for FM Server to control Terminal — click OK. This prompt appears once.
 
-Toggling stops the current server before starting the new mode. A brief (~1s)
-Terminal flash occurs when enabling PCC; the window then minimizes to the Dock.
-It cannot be fully headless — Terminal must stay the responsible process.
+## Build from source
+
+```
+git clone https://github.com/jwoll/AFMServerBar.git
+cd AFMServerBar
+./build-app.sh    # builds + ad-hoc signs FMServerBar.app
+open FMServerBar.app
+```
 
 ## Architecture
 
-- `HealthPoller.swift` — `Health`/`ModelHealth` types + `poll(port:)`.
-- `ServerController.swift` — `fm serve` subprocess lifecycle + own-orphan reap.
-- `AppState.swift` — `@MainActor` coordinator (controller + poller + login item).
-- `FMServerBarApp.swift` — `@main` `MenuBarExtra` + menu view.
-
-Design + plan: `docs/superpowers/`.
+| File | Role |
+|---|---|
+| `HealthPoller.swift` | `Health`/`ModelHealth` types + `poll(port:)` |
+| `ServerController.swift` | `fm serve` subprocess lifecycle, orphan reap |
+| `AppState.swift` | `@MainActor` coordinator — controller, poller, login item |
+| `FMServerBarApp.swift` | `@main` `MenuBarExtra` + menu view |
