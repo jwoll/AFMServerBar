@@ -2,9 +2,12 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# ---- Configuration (edit these for your account) ----
-SIGNING_IDENTITY="${SIGNING_IDENTITY:-Developer ID Application: Verity Systems LLC}"
-NOTARY_PROFILE="${NOTARY_PROFILE:-FMServerBar}"   # from: xcrun notarytool store-credentials
+# ---- Configuration — set via environment or edit defaults below ----
+# SIGNING_IDENTITY: from `security find-identity -v -p codesigning | grep "Developer ID Application"`
+# NOTARY_PROFILE:   name you gave to `xcrun notarytool store-credentials`
+# VERSION:          release version string
+SIGNING_IDENTITY="${SIGNING_IDENTITY:-Developer ID Application: Your Name (TEAMID)}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-FMServerBar}"
 VERSION="${VERSION:-0.1.0}"
 APP="FMServerBar.app"
 DMG="FMServerBar-${VERSION}.dmg"
